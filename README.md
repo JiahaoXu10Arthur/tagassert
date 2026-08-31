@@ -33,7 +33,7 @@ if not v:
     print("missing:", [r.tag for r in v.missing])
 ```
 
-No dependencies, stdlib only. 40 tests, CI on Python 3.9, 3.11 and 3.13.
+No dependencies, stdlib only. 48 tests, CI on Python 3.9, 3.11 and 3.13.
 
 ## What this is, and is not
 
@@ -78,8 +78,10 @@ membership. Without one it falls back to shape, which is deliberately generous
 — length only, no character allowlist — because wrongly calling something
 unjudgeable hides a real miss. In practice that means short prose is judged and
 reported `MISSING` at 0.00 rather than shrugged off; only conspicuous prose
-trips the fallback. The CLI has no vocabulary flag yet, so `tagassert check`
-gets the generous version.
+trips the fallback. On the command line that set is `--vocabulary PATH`, which
+takes either a plain list, one tag per line, or the `selected_tags.csv` a WD14
+tagger ships; entries are normalised on the way in, so an underscored label
+file and a space-typed prompt still describe the same tag.
 
 A fourth `PARTIAL` bucket existed in the prototype and was removed. It stacked
 a second arbitrary threshold (word coverage ≥ 0.5) on top of the first

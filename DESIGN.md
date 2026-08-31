@@ -129,10 +129,16 @@ paraphrase in the loop.
 It has been wrong once already: the phrase it showed as `NOT_JUDGEABLE` was
 short enough to be judged, so the real output said `MISSING` at 0.00.
 
-**Two known gaps, both honest and both still open.** `backends.py`'s HTTP path
-has never been exercised end to end — only `_parse` has unit coverage. And the
-CLI has no `--vocabulary` flag, so `tagassert check` always gets the generous
-fallback rather than exact membership.
+**One known gap, honest and still open.** `backends.py`'s HTTP path has never
+been exercised end to end — only `_parse` has unit coverage.
+
+**`--vocabulary` refuses two files rather than loading them.** An empty one,
+and a csv whose header did not name a `name` column. Both would produce a
+vocabulary that matches nothing, and since an unjudgeable verdict does not fail
+the gate, the run would exit 0 having judged none of what it was asked about —
+the same vacuous pass that `compare()` raises on for an empty request. The
+comma check is structural rather than a guess: a comma is the prompt separator,
+so a tag cannot contain one.
 
 **The compound-split note has misfired in both directions**, so change it
 carefully. It once fabricated a split story for `dark blue eyes` against a
