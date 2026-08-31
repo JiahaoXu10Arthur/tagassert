@@ -339,3 +339,38 @@ def test_a_literal_two_string_list_is_not_mistaken_for_a_link():
         "3": {"class_type": "KSampler", "inputs": {"positive": ["6", 0]}},
     }
     assert "masterpiece" in prompt_text(api)
+
+
+def _realistic_png(text_chunks, idat_count=5, idat_size=2048):
+    """A PNG shaped like the ones ComfyUI actually writes -- IHDR, one or two
+    tEXt chunks, several IDAT, IEND. The synthetic ones above have no IDAT,
+    which is the easy case for a chunk walker. No pixels; IDAT is filler."""
+    out = bytearray(b"\x89PNG\r\n\x1a\n")
+
+    def put(ctype, payload):
+        out.extend(struct.pack(">I", len(payload)))
+        out.extend(ctype + payload)
+        out.extend(struct.pack(">I", zlib.crc32(ctype + payload) & 0xFFFFFFFF))
+
+    put(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 2, 0, 0, 0))
+    for key, value in text_chunks:
+        put(b"tEXt", key.encode() + b"\x00" + value.encode())
+    for _ in range(idat_count):
+        put(b"IDAT", bytes(idat_size))
+    put(b"IEND", b"")
+    return bytes(out)
+
+
+def test_requested_tags_found_past_many_idat(tmp_path):
+    p = tmp_path / "real.png"
+    p.write_bytes(_realistic_png([("prompt", json.dumps(WF))], idat_count=30))
+    assert requested_tags(p) == ["1girl", "solo", "smile"]
+
+
+def test_the_editor_copy_does_not_win_over_the_prompt(tmp_path):
+    p = tmp_path / "both.png"
+    p.write_bytes(_realistic_png([
+        ("workflow", json.dumps({"nodes": [{"id": 1, "type": "Decoy"}]})),
+        ("prompt", json.dumps(WF)),
+    ]))
+    assert requested_tags(p) == ["1girl", "solo", "smile"]

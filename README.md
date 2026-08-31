@@ -33,7 +33,7 @@ if not v:
     print("missing:", [r.tag for r in v.missing])
 ```
 
-No dependencies, stdlib only. 38 tests, CI on Python 3.9, 3.11 and 3.13.
+No dependencies, stdlib only. 40 tests, CI on Python 3.9, 3.11 and 3.13.
 
 ## What this is, and is not
 
