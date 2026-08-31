@@ -16,6 +16,10 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/JiahaoXu10Arthur/tagassert"
+Issues = "https://github.com/JiahaoXu10Arthur/tagassert/issues"
+
 [project.optional-dependencies]
 test = ["pytest>=7"]
 

@@ -1,5 +1,7 @@
 # tagassert
 
+[![test](https://github.com/JiahaoXu10Arthur/tagassert/actions/workflows/test.yml/badge.svg)](https://github.com/JiahaoXu10Arthur/tagassert/actions/workflows/test.yml)
+
 Did the tags you asked for actually land in the image?
 
 You asked for `stirrup legwear`. A multi-label classifier looked at the render
