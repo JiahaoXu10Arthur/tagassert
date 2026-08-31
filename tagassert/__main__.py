@@ -13,10 +13,14 @@ found no prompt to check.
 
 from __future__ import annotations
 
+import csv
+import io
 import sys
 from pathlib import Path
+from typing import Set
 
-from . import DEFAULT_THRESHOLD, LANDED, MISSING, NOT_JUDGEABLE, compare
+from . import (DEFAULT_THRESHOLD, LANDED, MISSING, NOT_JUDGEABLE, compare,
+               normalise)
 from .backends import BackendError, ComfyTagger
 from .workflow import WorkflowError, requested_tags
 
@@ -39,12 +43,54 @@ Options:
   --url URL          ComfyUI base url (default http://127.0.0.1:8188)
   --model NAME       tagger model (default wd-eva02-large-tagger-v3)
   --input-dir PATH   ComfyUI's input directory, if the image must be staged
+  --vocabulary PATH  the classifier's label set, so judgeability is exact
+                     instead of guessed from shape. Takes a plain list, one
+                     tag per line, or a WD14 selected_tags.csv
   --quiet            print only failures
 
 Exit: 0 all landed, 1 something missing, 3 could not run.
 """ % DEFAULT_THRESHOLD
 
 _MARK = {LANDED: "ok  ", MISSING: "MISS", NOT_JUDGEABLE: "-   "}
+
+
+def read_vocabulary(path) -> Set[str]:
+    """Load a classifier's label set from a file.
+
+    Accepts a plain list, one tag per line, or the ``selected_tags.csv`` a
+    WD14 tagger ships. The csv is what a user actually has on disk, and making
+    them cut a column out of it first is one more place for a real miss to be
+    quietly downgraded to a shrug.
+
+    Entries are normalised on the way in for the same reason: danbooru writes
+    ``long_hair`` and a prompt is typed ``long hair``, so a raw comparison
+    would put every underscored tag outside its own vocabulary.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    rows = list(csv.reader(io.StringIO(text)))
+    if rows and "name" in rows[0]:
+        col = rows[0].index("name")
+        names = [r[col] for r in rows[1:] if len(r) > col]
+    else:
+        names = text.splitlines()
+
+    vocab = {n for n in (normalise(x) for x in names) if n}
+    # A tag cannot contain a comma -- that is the prompt separator. Commas
+    # here mean a csv whose header was not recognised, which would yield a
+    # vocabulary that matches nothing and report every tag unjudgeable. That
+    # exits 0 having checked nothing, which is the vacuous pass this package
+    # refuses everywhere else.
+    if any("," in v for v in vocab):
+        raise ValueError(
+            "%s looks like a csv whose columns were not recognised -- a tag "
+            "cannot contain a comma. Expected a header naming a 'name' "
+            "column, or one tag per line." % path)
+    if not vocab:
+        raise ValueError("%s contains no tags. An empty vocabulary makes "
+                         "every tag unjudgeable, and unjudgeable does not "
+                         "fail the gate -- the run would pass having checked "
+                         "nothing." % path)
+    return vocab
 
 
 def _fail(msg: str, *extra: str) -> int:
@@ -58,7 +104,7 @@ def _opts(args):
     out = {"node": None, "tags": None, "threshold": DEFAULT_THRESHOLD,
            "url": "http://127.0.0.1:8188",
            "model": "wd-eva02-large-tagger-v3", "input_dir": None,
-           "quiet": False}
+           "vocabulary": None, "quiet": False}
     i = 0
     while i < len(args):
         a = args[i]
@@ -81,6 +127,8 @@ def _opts(args):
             out["model"] = v
         elif a == "--input-dir":
             out["input_dir"] = v
+        elif a == "--vocabulary":
+            out["vocabulary"] = read_vocabulary(v)
         else:
             raise ValueError("unrecognised option %r" % a)
         i += 2
@@ -123,7 +171,7 @@ def main(argv=None) -> int:
     image = Path(rest[0])
     try:
         o = _opts(rest[1:])
-    except ValueError as e:
+    except (ValueError, OSError) as e:
         return _fail(str(e))
 
     try:
@@ -146,7 +194,8 @@ def main(argv=None) -> int:
     except BackendError as e:
         return _fail(str(e))
 
-    v = compare(asked, detected, threshold=o["threshold"])
+    v = compare(asked, detected, threshold=o["threshold"],
+                vocabulary=o["vocabulary"])
     print("%s" % image.name)
     _report(v, o["quiet"])
     return 0 if v.passed else 1

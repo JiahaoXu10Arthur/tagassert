@@ -374,3 +374,81 @@ def test_the_editor_copy_does_not_win_over_the_prompt(tmp_path):
         ("prompt", json.dumps(WF)),
     ]))
     assert requested_tags(p) == ["1girl", "solo", "smile"]
+
+
+# --------------------------------------------------------- vocabulary loading
+
+def test_a_plain_list_is_one_tag_per_line(tmp_path):
+    p = tmp_path / "tags.txt"
+    p.write_text("1girl\nsolo\nstirrup legwear\n")
+    from tagassert.__main__ import read_vocabulary
+    assert read_vocabulary(p) == {"1girl", "solo", "stirrup legwear"}
+
+
+def test_a_wd14_selected_tags_csv_is_read_from_its_name_column(tmp_path):
+    p = tmp_path / "selected_tags.csv"
+    p.write_text("tag_id,name,category,count\n"
+                 "470575,1girl,0,5352272\n"
+                 "212816,solo,0,4498549\n"
+                 "13200,general,9,1000\n")
+    from tagassert.__main__ import read_vocabulary
+    assert read_vocabulary(p) == {"1girl", "solo", "general"}
+
+
+def test_vocabulary_entries_are_normalised_like_requests_are(tmp_path):
+    # WD14 ships underscores; a prompt is typed with spaces. Comparing them
+    # raw makes every underscored tag fall outside its own vocabulary, and an
+    # unjudgeable verdict does not fail the gate -- so a real miss would be
+    # silently downgraded to a shrug.
+    p = tmp_path / "selected_tags.csv"
+    p.write_text("tag_id,name,category,count\n470575,long_hair,0,1\n")
+    from tagassert.__main__ import read_vocabulary
+    vocab = read_vocabulary(p)
+    assert vocab == {"long hair"}
+    v = compare(["long hair"], {}, vocabulary=vocab)
+    assert v.results[0].verdict == MISSING
+
+
+def test_an_empty_vocabulary_file_is_an_error_not_an_empty_set(tmp_path):
+    # An empty set makes every tag unjudgeable, and unjudgeable does not fail
+    # the gate -- so the run would exit 0 having checked nothing. That is the
+    # vacuous pass this package exists to refuse.
+    p = tmp_path / "empty.txt"
+    p.write_text("\n\n  \n")
+    from tagassert.__main__ import read_vocabulary
+    with pytest.raises(ValueError, match="no tags"):
+        read_vocabulary(p)
+
+
+def test_blank_lines_and_surrounding_space_are_ignored(tmp_path):
+    p = tmp_path / "tags.txt"
+    p.write_text("\n  1girl  \n\nsolo\n\n")
+    from tagassert.__main__ import read_vocabulary
+    assert read_vocabulary(p) == {"1girl", "solo"}
+
+
+def test_an_unrecognised_csv_is_refused_rather_than_matching_nothing(tmp_path):
+    # No header naming a column, so every line would become one "tag" full of
+    # commas -- a vocabulary that matches nothing, reports every request
+    # unjudgeable, and exits 0 having judged none of them.
+    p = tmp_path / "headerless.csv"
+    p.write_text("470575,1girl,0,5352272\n212816,solo,0,4498549\n")
+    from tagassert.__main__ import read_vocabulary
+    with pytest.raises(ValueError, match="comma"):
+        read_vocabulary(p)
+
+
+def test_a_bad_vocabulary_stops_the_run_instead_of_checking_nothing(tmp_path):
+    from tagassert.__main__ import main
+    p = tmp_path / "empty.txt"
+    p.write_text("")
+    assert main(["check", str(tmp_path / "x.png"),
+                 "--vocabulary", str(p)]) == 3
+
+
+def test_a_missing_vocabulary_file_exits_3_rather_than_traceback(tmp_path):
+    # 3 is the documented "could not run" code. An unhandled OSError here
+    # would leave the caller reading a traceback for a plain bad path.
+    from tagassert.__main__ import main
+    assert main(["check", str(tmp_path / "x.png"),
+                 "--vocabulary", str(tmp_path / "nope.txt")]) == 3
