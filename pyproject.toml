@@ -1,0 +1,30 @@
+[project]
+name = "tagassert"
+version = "0.1.0"
+description = "Did the tags you asked for actually land in the image? A deterministic pass/fail gate for booru-tag pipelines."
+readme = "README.md"
+authors = [{ name = "Jiahao Xu" }]
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["comfyui", "stable-diffusion", "wd14", "tagger", "evaluation",
+            "regression-testing", "prompt-adherence"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+tagassert = "tagassert.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["tagassert"]
