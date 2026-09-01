@@ -174,10 +174,14 @@ plain arguments and has no idea where they came from.
 
 ## Install
 
-Not on PyPI. From a clone:
+```console
+pip install tagassert
+```
+
+Or from a clone, to run the suite:
 
 ```console
-pip install .          # or -e ".[test]" to run the suite
+pip install -e ".[test]"
 pytest -q
 ```
 
