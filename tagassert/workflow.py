@@ -65,6 +65,19 @@ class WorkflowError(Exception):
     """The PNG carried no usable prompt, or one that cannot be recovered."""
 
 
+#: A chunk that is present but did not decode. It stands in the result where
+#: the text would have been, so "I could not decompress your prompt" cannot
+#: arrive as "this image has no prompt".
+class _Undecodable(object):
+    __slots__ = ("why",)
+
+    def __init__(self, why: str):
+        self.why = why
+
+    def __repr__(self) -> str:
+        return "<undecodable: %s>" % self.why
+
+
 def _chunks(png: Path) -> Dict[str, str]:
     data = Path(png).read_bytes()
     if not data.startswith(_PNG_SIG):
@@ -86,7 +99,29 @@ def _chunks(png: Path) -> Dict[str, str]:
                 k, _, rest = body.partition(b"\x00")
                 out[k.decode("latin-1")] = zlib.decompress(
                     rest[1:]).decode("utf-8", "replace")
-        except Exception:
+            elif ctype == b"iTXt":
+                # This copy had no iTXt branch, so a prompt written there was
+                # never looked at -- and an unread chunk reports exactly like
+                # an absent one.
+                k, _, rest = body.partition(b"\x00")
+                flag = rest[0] if rest else 0
+                rest = rest[2:]                        # compression flag, method
+                _, _, rest = rest.partition(b"\x00")   # language tag
+                _, _, rest = rest.partition(b"\x00")   # translated keyword
+                out[k.decode("latin-1")] = (
+                    zlib.decompress(rest) if flag else rest
+                ).decode("utf-8", "replace")
+        except Exception as exc:
+            # A malformed chunk must not abandon the whole file, and must not
+            # vanish from it either. Leaving no trace made a prompt that failed
+            # to decompress read as "no embedded ComfyUI workflow", with an
+            # invented cause and a chunk list missing the chunk that failed.
+            try:
+                k = body.partition(b"\x00")[0].decode("latin-1")
+            except Exception:
+                continue
+            out.setdefault(k, _Undecodable(
+                "%s chunk: %s" % (ctype.decode("latin-1"), exc)))
             continue
     return out
 
@@ -99,6 +134,11 @@ def read_workflow(png) -> dict:
     """
     chunks = _chunks(png)
     raw = chunks.get("prompt")
+    if isinstance(raw, _Undecodable):
+        raise WorkflowError(
+            "%s carries a prompt chunk that did not decode (%s). The workflow "
+            "is there and unreadable, which is a different problem from an "
+            "image that never had one." % (Path(png).name, raw.why))
     if not raw:
         have = ", ".join(sorted(chunks)) or "none"
         raise WorkflowError(

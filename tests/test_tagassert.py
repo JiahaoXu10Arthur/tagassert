@@ -481,3 +481,42 @@ def test_backend_parse_reads_every_output_node():
     got = ComfyTagger._parse({"2": {"t": {"general": 0.9}},
                               "3": {"t": {"1girl": 0.9}}})
     assert got == {"general": 0.9, "1girl": 0.9}
+
+
+def _broken_ztxt(key):
+    return (b"zTXt", key.encode() + b"\x00" + b"\x00" + b"not-actually-zlib")
+
+
+def _itxt(key, value):
+    """An uncompressed iTXt chunk: key, flag, method, language, translated."""
+    return (b"iTXt", key.encode() + b"\x00" + b"\x00\x00" + b"\x00" + b"\x00"
+            + value.encode())
+
+
+def test_an_undecodable_prompt_chunk_is_not_reported_as_a_missing_one(tmp_path):
+    """A prompt chunk that failed to decompress left no trace, so the file
+    read as "has no embedded ComfyUI workflow" -- with an invented cause and a
+    chunk list that omitted the chunk that failed."""
+    p = tmp_path / "x.png"
+    p.write_bytes(_png([_broken_ztxt("prompt")]))
+    with pytest.raises(WorkflowError) as e:
+        read_workflow(p)
+    msg = str(e.value)
+    assert "prompt" in msg
+    assert "has no embedded ComfyUI workflow" not in msg
+    assert "re-saved by an editor" not in msg
+
+
+def test_one_broken_chunk_does_not_lose_a_readable_prompt(tmp_path):
+    p = tmp_path / "y.png"
+    p.write_bytes(_png([_broken_ztxt("junk"), _text("prompt", json.dumps(WF))]))
+    assert read_workflow(p)["6"]["class_type"] == "CLIPTextEncode"
+
+
+def test_a_prompt_in_an_itxt_chunk_is_read(tmp_path):
+    """attribution-gate's copy of this walker handles iTXt; this one did not,
+    so a prompt written there was never looked at and reported as absent --
+    the same collapse as the undecodable case, one step earlier."""
+    p = tmp_path / "z.png"
+    p.write_bytes(_png([_itxt("prompt", json.dumps(WF))]))
+    assert read_workflow(p)["6"]["class_type"] == "CLIPTextEncode"
