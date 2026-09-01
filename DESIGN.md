@@ -110,6 +110,19 @@ The test that should have caught it asserted
 `_parse({"2": {"t": [{"smile": 0.8}]}})` — the right shape with one element,
 stopping exactly one element short of the bug.
 
+## Decision: unread and undecodable are not the same as absent
+
+Two ways this walker turned a present prompt into a missing one, both fixed:
+
+- A chunk that failed to decompress was skipped and left no trace, so the file
+  reported `has no embedded ComfyUI workflow` — with a chunk list that omitted
+  the chunk that failed and an invented cause ("re-saved by an editor"). It now
+  goes into the result as `_Undecodable(why)` and `read_workflow` reports the
+  zlib error verbatim. Skipping a broken *unrelated* chunk still costs nothing.
+- This copy of the walker had **no `iTXt` branch** while attribution-gate's did,
+  so a prompt written there was never looked at. Never-looked-at reports the
+  same as never-there, which is the same collapse one step earlier.
+
 ## Decision: do not guess which node holds the prompt
 
 The prototype hardcoded node `1130`, which held because one person's one
