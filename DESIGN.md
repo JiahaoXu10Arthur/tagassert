@@ -80,6 +80,36 @@ downstream re-reads it.
 Every such path is now an error — exit 3 at the CLI, `ValueError` from
 `compare()`.
 
+## Decision: read every output the tagger returned, never the first one
+
+`_parse` used to `return` on the first readable value it found while walking
+`outputs[node][field]`. That dropped tags three ways: the tail of a list of
+dicts, a second output field on the same node, and a second output node. The
+string-list branch had already been fixed to read every element, with a comment
+saying why — and the dict-list branch three lines above it still read
+`value[0]`. One half of one function fixed, the other half not.
+
+The reason this is not a cosmetic loss is the same reason
+["never pass because there was nothing to check"](#decision-never-pass-because-there-was-nothing-to-check)
+exists. A dropped detection does not surface as *"I could not tell"*. It
+surfaces as a confident `MISSING` at 0.00, which is exactly what the model
+genuinely not seeing the tag looks like.
+
+The second-field case is not hypothetical, and this document already depends on
+it: the exclusion list rests on **WD14 putting ratings on an output head
+separate from the general tags**. Walk that head first and `_parse` returns the
+ratings, so every general tag on every image reads `MISSING`. The gate would
+fail continuously while appearing to work.
+
+That is worth stating as a symmetry. Rating words are excluded so that a
+*requested* rating does not read `MISSING` on every image. This bug was its
+mirror: a rating head read first made every *non*-rating word `MISSING` on
+every image.
+
+The test that should have caught it asserted
+`_parse({"2": {"t": [{"smile": 0.8}]}})` — the right shape with one element,
+stopping exactly one element short of the bug.
+
 ## Decision: do not guess which node holds the prompt
 
 The prototype hardcoded node `1130`, which held because one person's one

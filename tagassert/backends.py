@@ -127,22 +127,32 @@ class ComfyTagger(object):
         def from_text(text: str) -> Dict[str, float]:
             return {t.strip(): 1.0 for t in text.split(",") if t.strip()}
 
+        # Every element of every field of every node, never the first one
+        # found. Returning early dropped tags three ways -- the tail of a
+        # dict list, a second output field, a second output node -- and a
+        # dropped detection does not reach the caller as "I could not tell".
+        # It reaches it as a confident MISSING at 0.00, which is the same
+        # thing the model genuinely not seeing it looks like.
+        #
+        # The second field is not hypothetical: WD14 puts ratings on a head
+        # separate from the general tags, which is the structural fact the
+        # rating exclusion in ``compare`` rests on. Walk that head first and
+        # every general tag on every image reads MISSING, so the gate fails
+        # continuously while looking like it works.
+        out: Dict[str, float] = {}
         for node_out in outputs.values():
             for value in (node_out or {}).values():
                 if isinstance(value, dict):
-                    return {str(k): float(v) for k, v in value.items()}
-                if isinstance(value, list) and value:
-                    if isinstance(value[0], dict):
-                        return {str(k): float(v) for k, v in value[0].items()}
-                    if all(isinstance(x, str) for x in value):
-                        # Every element, not just the first. Reading only
-                        # value[0] silently dropped the rest of the list, and
-                        # every tag it lost came back to the caller as a
-                        # confident MISSING.
-                        out: Dict[str, float] = {}
-                        for item in value:
+                    out.update((str(k), float(v)) for k, v in value.items())
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, dict):
+                            out.update((str(k), float(v))
+                                       for k, v in item.items())
+                        elif isinstance(item, str):
                             out.update(from_text(item))
-                        return out
-                if isinstance(value, str):
-                    return from_text(value)
-        raise BackendError("the tagger returned nothing this can read")
+                elif isinstance(value, str):
+                    out.update(from_text(value))
+        if not out:
+            raise BackendError("the tagger returned nothing this can read")
+        return out

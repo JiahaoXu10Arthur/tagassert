@@ -452,3 +452,32 @@ def test_a_missing_vocabulary_file_exits_3_rather_than_traceback(tmp_path):
     from tagassert.__main__ import main
     assert main(["check", str(tmp_path / "x.png"),
                  "--vocabulary", str(tmp_path / "nope.txt")]) == 3
+
+
+def test_backend_parse_keeps_every_tag_in_a_list_of_dicts():
+    """The sibling of the string-list case above, three lines away in the same
+    function and still reading value[0]. A dropped detection does not read as
+    "I could not tell" -- it reads as a confident MISSING at 0.00."""
+    from tagassert.backends import ComfyTagger
+    got = ComfyTagger._parse(
+        {"3": {"t": [{"1girl": 0.9}, {"solo": 0.8, "smile": 0.7}]}})
+    assert got == {"1girl": 0.9, "solo": 0.8, "smile": 0.7}
+
+
+def test_backend_parse_reads_every_output_field_on_a_node():
+    """WD14 puts ratings on an output head separate from the general tags --
+    the structural fact ADR-2 decision 4 rests on. Returning at the first
+    readable field means that if the rating head is walked first, every
+    general tag on every image comes back MISSING and the gate fails
+    continuously while looking like it works."""
+    from tagassert.backends import ComfyTagger
+    got = ComfyTagger._parse(
+        {"3": {"rating": {"general": 0.9}, "tags": {"1girl": 0.9, "solo": 0.8}}})
+    assert got == {"general": 0.9, "1girl": 0.9, "solo": 0.8}
+
+
+def test_backend_parse_reads_every_output_node():
+    from tagassert.backends import ComfyTagger
+    got = ComfyTagger._parse({"2": {"t": {"general": 0.9}},
+                              "3": {"t": {"1girl": 0.9}}})
+    assert got == {"general": 0.9, "1girl": 0.9}
